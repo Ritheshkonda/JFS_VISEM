@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Faculty Consolidated Timetable</title>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+
+        table {
+            width: 90%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        th, td {
+            border: 1px solid black;
+            padding: 8px;
+            text-align: center;
+            vertical-align: top;
+        }
+
+        th {
+            background-color: lightblue;
+        }
+
+        select {
+            padding: 6px;
+            font-size: 14px;
+            margin: 10px 0 20px 0;
+        }
+        .highlight-batch {
+   color: red;
+    padding: 4px;
+    display: block;
+}
+    </style>
+</head>
+
+<body>
+
+<h2>Upload Timetable CSV</h2>
+<input type="file" id="csvFile" accept=".csv">
+
+<br><br>
+
+<label><b>Select Faculty:</b></label><br>
+<select id="facultySelect">
+    <option value="">-- Select Faculty --</option>
+</select>
+
+<div id="tables"></div>
+
+<script>
+let csvData = [];
+
+/* ===== Load CSV ===== */
+document.getElementById("csvFile").addEventListener("change", function () {
+    Papa.parse(this.files[0], {
+        header: true,
+        skipEmptyLines: true,
+        complete: function (result) {
+            csvData = result.data;
+            populateFacultyDropdown(csvData);
+        }
+    });
+});
+
+/* ===== Populate Faculty Dropdown ===== */
+function populateFacultyDropdown(data) {
+    const select = document.getElementById("facultySelect");
+    select.innerHTML = '<option value="">-- Select Faculty --</option>';
+
+    const faculties = [...new Set(
+        data.map(r => r.FACULTY).filter(Boolean)
+    )];
+
+    faculties.forEach(fac => {
+        const opt = document.createElement("option");
+        opt.value = fac;
+        opt.textContent = fac;
+        select.appendChild(opt);
+    });
+
+    select.onchange = () => buildFacultyTimetable(select.value);
+}
+
+/* ===== Build ONE merged timetable for faculty ===== */
+function buildFacultyTimetable(facultyId) {
+    const container = document.getElementById("tables");
+    container.innerHTML = "";
+    if (!facultyId) return;
+
+    // Filter rows for faculty
+    const rows = csvData.filter(r =>
+        r.FACULTY &&
+        r.FACULTY.trim().toUpperCase() === facultyId.trim().toUpperCase()
+    );
+
+    // Timetable structure: DAY → FN/AN → array of classes
+    const timetable = {};
+    const days = ["MON", "TUE", "WED", "THU", "FRI", "SAT"];
+
+    days.forEach(d => timetable[d] = { FN: [], AN: [] });
+
+    rows.forEach(r => {
+        const day = r.DAY;
+        const session = r.SESSION;
+
+        if (!timetable[day] || !timetable[day][session]) return;
+const isHighlight = r.BATCH === "VI-SU-B2";
+
+timetable[day][session].push(
+    `<div class="${isHighlight ? 'highlight-batch' : ''}">
+        <b>${r.COURSE}</b><br>
+        Batch: ${r.BATCH}<br>
+        Room: ${r.ROOM}
+     </div>`
+);
+    });
+
+    renderFacultyTable(facultyId, timetable);
+}
+
+/* ===== Render ONE faculty table ===== */
+function renderFacultyTable(facultyId, timetable) {
+    const container = document.getElementById("tables");
+
+    const title = document.createElement("h3");
+    title.textContent = `Faculty Timetable: ${facultyId}`;
+    container.appendChild(title);
+
+    const table = document.createElement("table");
+
+    let html = `
+        <tr>
+            <th>DAY</th>
+            <th>FN</th>
+            <th rowspan="7">L<br>U<br>N<br>C<br>H</th>
+            <th>AN</th>
+        </tr>
+    `;
+
+    for (const day in timetable) {
+        const fn = timetable[day].FN.join("<hr>") || "";
+        const an = timetable[day].AN.join("<hr>") || "";
+
+        html += `
+            <tr>
+                <td>${day}</td>
+                <td>${fn}</td>
+                <td>${an}</td>
+            </tr>
+        `;
+    }
+
+    table.innerHTML = html;
+    container.appendChild(table);
+}
+</script>
+
+</body>
+</html>
