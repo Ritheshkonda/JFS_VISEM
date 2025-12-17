@@ -27,7 +27,7 @@
             background-color: lightblue;
         }
 
-        .batch-title, .faculty-title {
+        .title {
             font-size: 20px;
             font-weight: bold;
             margin-top: 30px;
@@ -54,9 +54,9 @@
 
 <br><br>
 
-<label><b>Select Faculty:</b></label><br>
-<select id="facultySelect">
-    <option value="">-- Select Faculty --</option>
+<label><b>View Mode:</b></label><br>
+<select id="viewSelect">
+    <option value="">-- Select Option --</option>
 </select>
 
 <div id="tables"></div>
@@ -71,21 +71,20 @@ document.getElementById("csvFile").addEventListener("change", function () {
         skipEmptyLines: true,
         complete: function (result) {
             csvData = result.data;
-            populateFacultyDropdown(csvData);
+            populateDropdown(csvData);
         }
     });
 });
 
-/* ================= Dropdown ================= */
-function populateFacultyDropdown(data) {
-    const select = document.getElementById("facultySelect");
-    select.innerHTML = '<option value="">-- Select Faculty --</option>';
+/* ================= Populate Dropdown ================= */
+function populateDropdown(data) {
+    const select = document.getElementById("viewSelect");
+    select.innerHTML = '<option value="">-- Select Option --</option>';
 
-    // ALL option
-    const allOpt = document.createElement("option");
-    allOpt.value = "ALL";
-    allOpt.textContent = "ALL FACULTY (Show All Timetables)";
-    select.appendChild(allOpt);
+    select.innerHTML += `
+        <option value="ALL_BATCH">ALL TIMETABLES (Batch-wise)</option>
+        <option value="ALL_FACULTY">ALL FACULTY (Individual)</option>
+    `;
 
     const faculties = [...new Set(
         data.map(r => r.FACULTY).filter(Boolean)
@@ -93,34 +92,39 @@ function populateFacultyDropdown(data) {
 
     faculties.forEach(f => {
         const opt = document.createElement("option");
-        opt.value = f;
+        opt.value = `FAC_${f}`;
         opt.textContent = f;
         select.appendChild(opt);
     });
 
-    select.onchange = () => handleSelection(select.value);
+    select.onchange = () => handleView(select.value);
 }
 
-/* ================= Handle Selection ================= */
-function handleSelection(value) {
+/* ================= Handle View ================= */
+function handleView(value) {
     const container = document.getElementById("tables");
     container.innerHTML = "";
-
     if (!value) return;
 
-    if (value === "ALL") {
-        buildAllBatchTimetables(csvData);
-    } else {
-        buildFacultyTimetable(value);
+    if (value === "ALL_BATCH") {
+        renderAllBatchTimetables();
+    }
+    else if (value === "ALL_FACULTY") {
+        const faculties = [...new Set(csvData.map(r => r.FACULTY).filter(Boolean))];
+        faculties.forEach(f => renderFacultyTimetable(f));
+    }
+    else if (value.startsWith("FAC_")) {
+        const faculty = value.replace("FAC_", "");
+        renderFacultyTimetable(faculty);
     }
 }
 
-/* ================= ALL → Batch-wise ================= */
-function buildAllBatchTimetables(data) {
-    const timetable = {};
+/* ================= Batch-wise ================= */
+function renderAllBatchTimetables() {
     const days = ["MON", "TUE", "WED", "THU", "FRI", "SAT"];
+    const timetable = {};
 
-    data.forEach(r => {
+    csvData.forEach(r => {
         if (!r.BATCH || !r.DAY || !r.SESSION) return;
 
         if (!timetable[r.BATCH]) timetable[r.BATCH] = {};
@@ -137,65 +141,45 @@ function buildAllBatchTimetables(data) {
 
     for (const batch in timetable) {
         const title = document.createElement("div");
-        title.className = "batch-title";
+        title.className = "title";
         title.textContent = `Batch: ${batch}`;
-
-        const table = document.createElement("table");
-
-        let html = `
-            <tr>
-                <th>DAY</th>
-                <th>FN</th>
-                <th rowspan="7">L<br>U<br>N<br>C<br>H</th>
-                <th>AN</th>
-            </tr>
-        `;
-
-        days.forEach(d => {
-            html += `
-                <tr>
-                    <td>${d}</td>
-                    <td>${timetable[batch][d]?.FN || ""}</td>
-                    <td>${timetable[batch][d]?.AN || ""}</td>
-                </tr>
-            `;
-        });
-
-        table.innerHTML = html;
         container.appendChild(title);
-        container.appendChild(table);
+
+        container.appendChild(buildTable(timetable[batch], false));
     }
 }
 
-/* ================= Faculty → ONE merged ================= */
-function buildFacultyTimetable(facultyId) {
-    const container = document.getElementById("tables");
-
-    const rows = csvData.filter(r =>
-        r.FACULTY &&
-        r.FACULTY.trim().toUpperCase() === facultyId.trim().toUpperCase()
-    );
-
+/* ================= Faculty-wise (Merged) ================= */
+function renderFacultyTimetable(faculty) {
     const days = ["MON", "TUE", "WED", "THU", "FRI", "SAT"];
-    const timetable = {};
-    days.forEach(d => timetable[d] = { FN: [], AN: [] });
+    const tableData = {};
+    days.forEach(d => tableData[d] = { FN: [], AN: [] });
 
-    rows.forEach(r => {
-        const highlight = r.BATCH === "VI-SU-B2";
-        timetable[r.DAY][r.SESSION].push(
-            `<div class="${highlight ? 'highlight-batch' : ''}">
-                <b>${r.COURSE}</b><br>
-                Batch: ${r.BATCH}<br>
-                Room: ${r.ROOM}
-             </div>`
-        );
-    });
+    csvData
+        .filter(r => r.FACULTY?.trim() === faculty.trim())
+        .forEach(r => {
+            const highlight = r.BATCH === "VI-SU-B2";
+            tableData[r.DAY][r.SESSION].push(
+                `<div class="${highlight ? 'highlight-batch' : ''}">
+                    <b>${r.COURSE}</b><br>
+                    Batch: ${r.BATCH}<br>
+                    Room: ${r.ROOM}
+                 </div>`
+            );
+        });
 
+    const container = document.getElementById("tables");
     const title = document.createElement("div");
-    title.className = "faculty-title";
-    title.textContent = `Faculty Timetable: ${facultyId}`;
+    title.className = "title";
+    title.textContent = `Faculty: ${faculty}`;
     container.appendChild(title);
 
+    container.appendChild(buildTable(tableData, true));
+}
+
+/* ================= Common Table Builder ================= */
+function buildTable(data, isArray) {
+    const days = ["MON", "TUE", "WED", "THU", "FRI", "SAT"];
     const table = document.createElement("table");
 
     let html = `
@@ -208,17 +192,20 @@ function buildFacultyTimetable(facultyId) {
     `;
 
     days.forEach(d => {
+        const fn = isArray ? data[d].FN.join("<hr>") : data[d]?.FN || "";
+        const an = isArray ? data[d].AN.join("<hr>") : data[d]?.AN || "";
+
         html += `
             <tr>
                 <td>${d}</td>
-                <td>${timetable[d].FN.join("<hr>")}</td>
-                <td>${timetable[d].AN.join("<hr>")}</td>
+                <td>${fn}</td>
+                <td>${an}</td>
             </tr>
         `;
     });
 
     table.innerHTML = html;
-    container.appendChild(table);
+    return table;
 }
 </script>
 
